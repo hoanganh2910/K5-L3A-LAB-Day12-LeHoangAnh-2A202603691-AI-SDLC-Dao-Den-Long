@@ -19,7 +19,7 @@ GOLD = "#F2C14E"
 INTROS = {
     1: ("Đêm 1 — Đảo Bến", "Ông Đăng: Năm ngọn đèn chờ con. Nhặt đom đóm, và đừng để Bóng Mực chạm khăn."),
     2: ("Đêm 2 — Đảo Cau", "Ông Đăng: Cầu tre nối hai đảo. Gió Lạc thèm ánh sáng trong túi con."),
-    3: ("Đêm 3 — Đảo Chuông", "Ông Đăng: Leo tầng, nghe gió trước khi nó đẩy. Bảy đèn là bình minh."),
+    3: ("Đêm 3 — Đảo Chuông", "Ông Đăng: Leo tầng, nghe gió trước khi nó đẩy. Giữ đèn sáng tới bình minh."),
 }
 
 
@@ -108,11 +108,14 @@ class Game:
     def _hx(self, value: str, alpha: int = 255):
         return _hex(self.color, value, alpha)
 
+    def _shade_tint(self) -> str:
+        return "#00B3FF" if self.settings.get("colorblind") else "#7A3CFF"
+
     def _show_menu(self) -> None:
         self.mode = "menu"
         self._hide_hud()
         self.banner.text = "Đảo Đèn Lồng\n\nEnter — Bắt đầu"
-        self.help_text.text = "Ba đêm. Thắp hết đèn trước bình minh."
+        self.help_text.text = "Ba đêm. Giữ đảo sáng tới bình minh."
         self._music(False)
 
     def _show_intro(self) -> None:
@@ -197,6 +200,8 @@ class Game:
                 self.settings["sensitivity"] = max(0.2, round(self.settings["sensitivity"] - 0.1, 2))
             elif key == "up arrow":
                 self.settings["sensitivity"] = min(3.0, round(self.settings["sensitivity"] + 0.1, 2))
+            elif key == "c":
+                self.settings["colorblind"] = not self.settings.get("colorblind", False)
             elif key == "enter":
                 _save_settings(self.settings)
                 self.mode = "pause"
@@ -226,9 +231,11 @@ class Game:
                 self._show_menu()
 
     def _settings_text(self) -> None:
+        palette = "bật" if self.settings.get("colorblind") else "tắt"
         self.banner.text = (
             f"Cài đặt\n\nÂm lượng {self.settings['volume']:.1f}   ← →\n"
-            f"Độ nhạy chuột {self.settings['sensitivity']:.1f}   ↑ ↓\n\nEnter — Quay lại"
+            f"Độ nhạy chuột {self.settings['sensitivity']:.1f}   ↑ ↓\n"
+            f"Bảng màu dễ phân biệt  {palette}   C\n\nEnter — Quay lại"
         )
 
     def _update(self) -> None:
@@ -316,16 +323,26 @@ class Game:
         self._sync_drifters(now)
         self._sync_charms()
         lit = 0
+        blink_off = int(now * 2) % 2 == 0
         for lantern in sim.lanterns:
             parts = self.lantern_ents[lantern.id]
+            low = lantern.lit and lantern.fuel_units < T.LOW_FUEL_UNITS
+            show = not (low and blink_off)
+            parts["glow"].enabled = show
+            parts["core"].enabled = show
+            parts["bar"].enabled = lantern.lit and show
+            parts["tear"].enabled = not lantern.lit
             if lantern.lit:
                 lit += 1
                 parts["glow"].color = self._hx("#FFB347")
                 parts["core"].color = self._hx("#FFE9B0")
+                parts["glow"].scale = (0.42, 0.42, 0.42)
                 parts["pool"].enabled = True
+                parts["bar"].scale_x = max(0.05, 0.7 * lantern.fuel_units / T.FUEL_MAX_UNITS)
             else:
                 parts["glow"].color = self._hx("#5B5F6E")
                 parts["core"].color = self._hx("#5B5F6E")
+                parts["glow"].scale = (0.42, 0.336, 0.42)
                 parts["pool"].enabled = False
         total = max(1, len(sim.lanterns))
         level = 0.15 + 0.55 * (lit / total)
@@ -338,12 +355,16 @@ class Game:
         left = max(0.0, sim.duration_s - sim.sim_tick / 60.0)
         self.flames.text = "Ngon Lua  " + "*" * sim.flames + "." * (T.FLAMES - sim.flames)
         self.clock.text = f"{int(left) // 60:02d}:{int(left) % 60:02d}"
+        danger = "#FFFFFF" if self.settings.get("colorblind") else DANGER
+        self.flames.color = self._hx(danger)
         if left <= 30:
-            self.clock.color = self._hx(DANGER if int(now * 2) % 2 == 0 else "#3A1214")
+            mark = "(!) " if self.settings.get("colorblind") else ""
+            self.clock.text = f"{mark}{int(left) // 60:02d}:{int(left) % 60:02d}"
+            self.clock.color = self._hx(danger if int(now * 2) % 2 == 0 else "#3A1214")
         else:
             self.clock.color = self._hx(UI)
         self.stats.text = f"Den {lit}/{len(sim.lanterns)}\nDiem {sim.score}"
-        self.pips.text = "#" * sim.carried + "-" * (T.CARRY_CAPACITY - sim.carried)
+        self.pips.text = f"{sim.carried}/{sim.carry_cap()}"
         dash = "Lướt sẵn" if sim.dash_cd == 0 or sim.charm_left > 0 else f"Lướt {sim.dash_cd / 60:.1f}"
         pulse = "Sáng sẵn" if sim.pulse_cd == 0 else f"Sáng {sim.pulse_cd / 60:.1f}"
         self.cooldowns.text = f"{dash}\n{pulse}"
@@ -351,7 +372,7 @@ class Game:
         self.arrow.text = ""
         nearest = None
         for lantern in sim.lanterns:
-            if lantern.lit:
+            if lantern.lit and lantern.fuel_units >= T.FUEL_MAX_UNITS:
                 continue
             dist = math.hypot(lantern.x - sim.x, lantern.z - sim.z)
             if nearest is None or dist < nearest[0]:
@@ -360,7 +381,11 @@ class Game:
             return
         dist, lantern = nearest
         if dist <= T.INTERACT_RADIUS:
-            self.prompt.text = f"E - Nap anh sang ({lantern.deposited}/{T.LANTERN_COST})"
+            if lantern.lit:
+                self.prompt.text = f"E - Cham dau ({lantern.fuel_units / 60:.0f})"
+            else:
+                cost = T.RELIGHT_COST if lantern.ever_lit else T.LANTERN_COST
+                self.prompt.text = f"E - Thap den ({lantern.deposited}/{cost})"
             return
         dx = lantern.x - sim.x
         dz = lantern.z - sim.z
@@ -428,8 +453,11 @@ class Game:
             pool = self._quad(8, self._hx("#FFB347", 90), y=lantern.y + 0.05)
             pool.x, pool.z = lantern.x, lantern.z
             pool.enabled = False
-            self.world_ents.extend((pole, cap, glow, core, pool))
-            self.lantern_ents[lantern.id] = {"glow": glow, "core": core, "pool": pool}
+            bar = self.Entity(model="cube", position=(lantern.x, lantern.y + 2.7, lantern.z), scale=(0.7, 0.06, 0.06), color=self._hx(GOLD))
+            tear = self.Entity(model="cube", position=(lantern.x + 0.12, lantern.y + 2.05, lantern.z), scale=(0.08, 0.16, 0.02), color=self._hx("#1A1A1A"))
+            tear.enabled = False
+            self.world_ents.extend((pole, cap, glow, core, pool, bar, tear))
+            self.lantern_ents[lantern.id] = {"glow": glow, "core": core, "pool": pool, "bar": bar, "tear": tear}
 
     def _build_player(self) -> None:
         from ursina import Cone
@@ -475,17 +503,22 @@ class Game:
             if ent is None:
                 ent = self.Entity()
                 body = self.Entity(parent=ent, model="sphere", scale=(1.4, 1.5, 1.4), color=self._hx("#120A1A"), shader=self.shader)
-                edge = self.Entity(parent=ent, model="sphere", scale=(1.7, 1.7, 1.7), color=self._hx("#7A3CFF", 70))
+                edge = self.Entity(parent=ent, model="sphere", scale=(1.7, 1.7, 1.7), color=self._hx(self._shade_tint(), 70))
+                eye = self.Entity(parent=ent, model="sphere", scale=0.16, position=(0, 0.25, 0.55), color=self._hx(self._shade_tint()))
                 ent.body = body
                 ent.edge = edge
+                ent.eye = eye
                 self.shade_ents[shade.id] = ent
             ent.position = (shade.x, shade.y, shade.z)
+            tint = self._shade_tint()
             if shade.state == "stunned":
                 ent.body.color = self._hx("#3A3450")
                 ent.edge.color = self._hx("#3A3450", 80)
+                ent.eye.color = self._hx("#3A3450")
             else:
                 ent.body.color = self._hx("#120A1A")
-                ent.edge.color = self._hx("#7A3CFF", 70)
+                ent.edge.color = self._hx(tint, 70)
+                ent.eye.color = self._hx(tint)
 
     def _sync_drifters(self, now: float) -> None:
         alive = {item.id: item for item in self.sim.drifters}
@@ -598,10 +631,11 @@ def _load_settings() -> dict:
             return {
                 "volume": float(data.get("volume", 0.7)),
                 "sensitivity": float(data.get("sensitivity", 1.0)),
+                "colorblind": bool(data.get("colorblind", False)),
             }
         except (OSError, ValueError, TypeError):
             pass
-    return {"volume": 0.7, "sensitivity": 1.0}
+    return {"volume": 0.7, "sensitivity": 1.0, "colorblind": False}
 
 
 def _save_settings(settings: dict) -> None:

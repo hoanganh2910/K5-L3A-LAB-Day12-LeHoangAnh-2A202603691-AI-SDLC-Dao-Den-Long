@@ -30,3 +30,19 @@ Cùng công cụ Cursor. Vẫn không có bộ đếm token trên giao diện, n
 - Bấm lướt khi còn hồi chiêu nuốt mất cạnh nút, nên lần bấm sau không còn là cạnh lên. Test tách lần bấm bị chặn và lần bấm khi đã hồi.
 - Thắp đèn cuối cùng làm đêm thắng ngay, nên bài test đẩy Bóng Mực ra khỏi vòng an toàn không được để sẵn các đèn kia sáng.
 - Cửa sổ offscreen không khóa được chuột. Nhánh đo FPS bỏ qua bước đó.
+
+# Nhật ký dùng AI — Phase 3
+
+Cùng công cụ Cursor. Giao diện vẫn không có bộ đếm token, nên không ghi số ước.
+
+## Cách làm
+
+- Giữ dầu bằng số nguyên 1/60 trong sim, chỉ làm tròn khi xuất snapshot và event. Ghi quyết định ở `docs/notes/adr-0001-lantern-fuel.md`.
+- Sửa test cũ bị luật mới làm sai ngay trong file test, và ghi lý do trong `CHANGELOG.md`. Không dùng skip.
+- Thêm `tests/test_phase3.py` cho hao dầu, châm dầu, thắp lại, sức chứa, hút dầu, vùng an toàn và bình minh.
+- Phần nhìn thêm thanh dầu, đèn xẹp, và bảng màu dễ phân biệt. File headless không đổi vì những thứ đó.
+
+## Lỗi đã bắt
+
+- Một lần bấm châm dầu xảy ra sau bước trừ dầu, nên `ceil((100 − fuel) / 10)` phải tính trên dầu đã hao 1/60 của tick đó.
+- Dòng `end` luôn được ghi khi chạy hết số tick, kể cả khi còn đang chơi. Test "không thắng sớm" phải nhìn `state`, không phải loại dòng cuối.

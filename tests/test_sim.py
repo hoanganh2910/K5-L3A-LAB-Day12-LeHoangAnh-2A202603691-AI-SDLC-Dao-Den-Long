@@ -1,7 +1,6 @@
-"""Night rules against Test Contract v1.1, including the Phase 1 behaviors with standard numbers."""
+"""Night rules against Test Contract v1.2, including the Phase 1 behaviors with standard numbers."""
 
 import json
-import math
 from pathlib import Path
 
 from lantern.sim import FormatError, parse_inputs, parse_scenario, run_simulation
@@ -43,7 +42,7 @@ def snap(lines, tick):
 def test_contract_file_matches_tuning():
     on_disk = json.loads(Path("game.contract.json").read_text(encoding="utf-8"))
     assert on_disk == contract_dict()
-    assert on_disk["contract_version"] == "1.1"
+    assert on_disk["contract_version"] == "1.2"
     tuning = on_disk["tuning"]
     assert tuning["player_speed"] == 6.0
     assert tuning["carry_capacity"] == 10
@@ -51,13 +50,22 @@ def test_contract_file_matches_tuning():
     assert tuning["pickup_radius"] == 1.0
     assert tuning["pulse_cost"] == 3
     assert tuning["pulse_radius"] == 5.0
-    assert tuning["night1_duration_s"] == 300
+    assert tuning["night1_duration_s"] == 240
     assert tuning["dash_speed"] == 14.0
-    assert tuning["night2_duration_s"] == 330
-    assert tuning["night3_duration_s"] == 360
+    assert tuning["night2_duration_s"] == 270
+    assert tuning["night3_duration_s"] == 300
+    assert tuning["fuel_max"] == 100
+    assert tuning["fuel_decay_per_s"] == 1.0
+    assert tuning["fuel_per_mote"] == 10
+    assert tuning["relight_cost"] == 5
+    assert tuning["win_ratio"] == 0.6
+    assert tuning["drain_per_s"] == 5
+    assert tuning["low_fuel_threshold"] == 30
+    assert tuning["capacity_max"] == 20
     assert tuning["fall_enabled"] is True
+    assert tuning["score"]["per_mote"] == 5
     assert tuning["score"]["per_stun"] == 5
-    assert tuning["score"]["per_second_left"] == 2
+    assert tuning["score"]["per_second_left"] == 0
     assert tuning["score"]["per_flame_left"] == 50
 
 
@@ -126,35 +134,39 @@ def test_deposit_scores_and_lights_the_nearest_lantern():
     )
     deposits = events(lines, "deposit")
     assert deposits[0]["data"] == {"lantern_id": "L1", "amount": 10, "deposited": 10}
-    assert events(lines, "lantern_lit")[0]["data"] == {"lantern_id": "L1"}
-    assert snap(lines, 1)["score"] == 200
+    assert events(lines, "lantern_lit")[0]["data"] == {"lantern_id": "L1", "relight": False}
+    assert snap(lines, 1)["score"] == 150
+    assert lines[-1]["state"] == "playing"
     assert len(deposits) == 1
 
 
 def test_prelit_lanterns_do_not_score_or_emit_events():
+    # Phase 3 replaces the old "all lit at setup wins immediately" rule.
     lines = simulate(
         quiet(lanterns=[{"id": f"L{i}", "lit": True} for i in range(1, 6)]),
-        ticks=10,
-        every=10,
+        ticks=0,
     )
     assert events(lines) == []
-    assert lines[-1] == {"type": "end", "ticks": 0, "state": "won", "score": 0}
+    assert lines[0]["state"] == "playing"
+    assert lines[0]["score"] == 0
+    assert all(lantern["fuel"] == 100.0 and lantern["ever_lit"] for lantern in lines[0]["lanterns"])
 
 
-def test_win_uses_the_standard_bonus():
+def test_dawn_survived_replaces_the_early_all_lit_win():
+    # The old test won on tick 1 with a time bonus. A night now ends only at dawn or at 0 flames.
     lines = simulate(
         quiet(
-            player={"carried": 1, "flames": 3},
-            lanterns=[{"id": "L1", "pos": [0, 0, 0], "deposited": 9}]
-            + [{"id": f"L{i}", "lit": True} for i in range(2, 6)],
+            time_left_s=1,
+            player={"flames": 3},
+            lanterns=[{"id": f"L{i}", "lit": True} for i in range(1, 4)],
         ),
-        frames=[{"tick": 0, "interact": True}],
-        ticks=5,
-        every=1,
+        ticks=60,
+        every=60,
     )
     assert lines[-1]["state"] == "won"
-    assert lines[-1]["ticks"] == 1
-    assert lines[-1]["score"] == 10 + 100 + math.floor(300 - 1 / 60) * 2 + 150
+    assert lines[-1]["ticks"] == 60
+    assert lines[-1]["score"] == 3 * (50 + 99) + 3 * 50
+    assert events(lines, "game_over")[0]["data"] == {"result": "won", "reason": "dawn_survived"}
 
 
 def test_pulse_stuns_within_5m_and_cools_down_for_3s():

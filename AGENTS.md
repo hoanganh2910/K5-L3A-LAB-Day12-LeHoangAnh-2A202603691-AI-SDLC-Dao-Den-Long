@@ -14,6 +14,6 @@ Luật nằm trong `lantern/tuning.py` và bản đồ trong `lantern/world.py`.
 
 60 tick mỗi giây. Snapshot tick 0 là sau khi dựng scenario, trước input. Bước k đọc input tick k và ra trạng thái sau bước đó. Event ghi tick của bước vừa chạy. `tick` vẫn tăng khi tạm dừng. `sim_tick` chỉ tăng khi game đang chạy.
 
-Trong một bước đang chơi: giảm bộ đếm, di chuyển rồi xét rơi, nhặt, nạp đèn, vùng an toàn, tỏa sáng, di chuyển Bóng Mực và Gió Lạc, chạm, sinh theo lịch, rồi mới xét thắng thua. Ưu tiên kết thúc: hết Ngọn Lửa, thắp hết đèn, hết giờ.
+Trong một bước đang chơi: giảm bộ đếm, rồi trừ dầu đèn (hao và bị hút) và tắt đèn khi dầu hết; di chuyển rồi xét rơi, nhặt, nạp đèn, vùng an toàn, tỏa sáng, di chuyển Bóng Mực và Gió Lạc, chạm, sinh theo lịch, rồi mới xét thắng thua. Ưu tiên kết thúc: hết Ngọn Lửa (`no_flames`), rồi bình minh. Thắng khi còn sống và số đèn đang sáng đạt ngưỡng `dawn_survived`. Thắp đủ đèn không kết thúc Đêm.
 
 Khoảng cách trên mặt phẳng XZ, trừ Tỏa Sáng dùng khoảng cách 3D. `<=` bán kính là trong tầm. Rơi khi Y < -10.

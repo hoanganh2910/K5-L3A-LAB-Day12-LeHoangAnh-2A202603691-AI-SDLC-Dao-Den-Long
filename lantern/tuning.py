@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-CONTRACT_VERSION = "1.1"
+CONTRACT_VERSION = "1.2"
 TEAM = "2A202603691-LeHoangAnh"
 BUILD_CMD = "python3 -m pip install -r requirements.txt"
 RUN_CMD = "python3 -m lantern play"
@@ -19,9 +19,22 @@ INTERACT_RADIUS = 2.0
 PULSE_COST = 3
 PULSE_RADIUS = 5.0
 PULSE_CENTER_Y = 0.8
-NIGHT1_DURATION_S = 300
-NIGHT2_DURATION_S = 330
-NIGHT3_DURATION_S = 360
+NIGHT1_DURATION_S = 240
+NIGHT2_DURATION_S = 270
+NIGHT3_DURATION_S = 300
+FUEL_MAX = 100
+FUEL_DECAY_PER_S = 1.0
+FUEL_PER_MOTE = 10
+RELIGHT_COST = 5
+WIN_RATIO = 0.6
+DRAIN_PER_S = 5.0
+LOW_FUEL_THRESHOLD = 30
+CAPACITY_MAX = 20
+FUEL_SUBUNITS = 60
+FUEL_MAX_UNITS = FUEL_MAX * FUEL_SUBUNITS
+LOW_FUEL_UNITS = LOW_FUEL_THRESHOLD * FUEL_SUBUNITS
+SCORE_RELIGHT = 40
+SCORE_DAWN_LANTERN = 50
 FLAMES = 3
 INVULN_S = 1.5
 HIT_DROP_RATIO = 0.5
@@ -49,11 +62,12 @@ DASH_SPEED = 14.0
 DASH_DURATION_S = 0.2
 DASH_COOLDOWN_S = 1.5
 
-SCORE_PER_MOTE = 10
+SCORE_PER_MOTE = 5
 SCORE_PER_LANTERN = 100
 SCORE_PER_STUN = 5
-SCORE_PER_SECOND_LEFT = 2
+SCORE_PER_SECOND_LEFT = 0
 SCORE_PER_FLAME_LEFT = 50
+SCORE_DRAIN_STUN = 15
 
 DROP_TTL_TICKS = 480
 DROP_RING_MIN = 1.5
@@ -125,5 +139,13 @@ def contract_dict() -> dict:
             "dash_cooldown_s": DASH_COOLDOWN_S,
             "night2_duration_s": NIGHT2_DURATION_S,
             "night3_duration_s": NIGHT3_DURATION_S,
+            "fuel_max": FUEL_MAX,
+            "fuel_decay_per_s": FUEL_DECAY_PER_S,
+            "fuel_per_mote": FUEL_PER_MOTE,
+            "relight_cost": RELIGHT_COST,
+            "win_ratio": WIN_RATIO,
+            "drain_per_s": DRAIN_PER_S,
+            "low_fuel_threshold": LOW_FUEL_THRESHOLD,
+            "capacity_max": CAPACITY_MAX,
         },
     }

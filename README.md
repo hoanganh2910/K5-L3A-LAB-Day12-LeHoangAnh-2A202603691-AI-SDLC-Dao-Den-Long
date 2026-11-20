@@ -22,25 +22,25 @@ Trên Windows, dùng `python` thay cho `python3` và `.venv\Scripts\activate`. H
 - Chuột: xoay camera.
 - Space: nhảy khi đang chạm đất.
 - Shift trái: lướt.
-- E: nạp đom đóm đang mang vào đèn gần nhất chưa sáng.
+- E: nạp đom đóm vào đèn gần nhất còn nhận dầu (chưa sáng, hoặc sáng nhưng chưa đầy).
 - F: tỏa sáng, tốn 3 đom đóm.
 - Esc hoặc P: tạm dừng. Trong menu tạm dừng, phím 1 đến 4 chọn tiếp tục, chơi lại, cài đặt, về menu.
 - Enter: bắt đầu, vào đêm, hoặc sang đêm sau.
 
 ## Cách tính điểm
 
-- Nạp 1 đom đóm vào đèn: 10.
-- Thắp 1 đèn: 100.
-- Mỗi Bóng Mực trúng Tỏa Sáng: 5.
-- Chỉ khi thắng đêm: thêm `floor(giây còn lại) × 2` và 50 điểm cho mỗi Ngọn Lửa còn lại.
+- Mỗi đom đóm nạp vào đèn: 5.
+- Thắp lần đầu: 100. Thắp lại: 40.
+- Bóng Mực trúng Tỏa Sáng: 5, hoặc 15 nếu ngay trước đó nó đang hút dầu.
+- Chỉ khi thắng lúc bình minh: mỗi đèn đang sáng được `50 + floor(dầu)`, và 50 điểm cho mỗi Ngọn Lửa còn lại. Không còn thưởng thời gian.
 
-Tổng điểm ở màn Bình Minh là tổng điểm các đêm đã thắng. Thua không được thưởng thời gian hay máu. Đèn đặt sẵn sáng trong scenario headless không được điểm.
+Tổng điểm ở màn Bình Minh là tổng điểm các đêm đã thắng. Đèn đặt sẵn sáng trong scenario headless không được điểm.
 
-## Luật Đêm 1
+## Luật Đêm
 
-Ngọn Lửa bắt đầu bằng 3 và hồi đầy đầu mỗi đêm. Túi mang tối đa 10. Mỗi đèn cần 10 đom đóm. Đêm 1, 2, 3 dài 300, 330 và 360 giây. Hết Ngọn Lửa thì thua. Thắp hết đèn thì thắng, kể cả đúng tick hết giờ. Hết giờ mà chưa thắp hết thì thua. Rơi khỏi đảo khi Y < −10.
+Ngọn Lửa bắt đầu bằng 3 và hồi đầy đầu mỗi đêm. Túi bắt đầu mang được 10, tăng 2 sau mỗi lần thắp thành công, tối đa 20. Đèn mới cần 10 đom đóm, đèn đã từng sáng chỉ cần 5. Đèn đang sáng hao 1 dầu mỗi giây và có thể tắt. Đêm 1, 2, 3 dài 240, 270 và 300 giây. Hết Ngọn Lửa thì thua ngay. Hết giờ mà còn sống và đủ đèn đang sáng (Đêm 1 cần 3/5) thì thắng. Hết giờ mà thiếu đèn thì thua. Rơi khỏi đảo khi Y < −10.
 
-Các số này nằm trong [game.contract.json](game.contract.json) và [lantern/tuning.py](lantern/tuning.py). Giả định: [docs/notes/phase2-assumptions.md](docs/notes/phase2-assumptions.md). Tiêu chí phần mới: [docs/notes/phase2-spec.md](docs/notes/phase2-spec.md).
+Các số này nằm trong [game.contract.json](game.contract.json) và [lantern/tuning.py](lantern/tuning.py). Quyết định Phase 3: [docs/notes/adr-0001-lantern-fuel.md](docs/notes/adr-0001-lantern-fuel.md). Thay đổi phá vỡ tương thích: [CHANGELOG.md](CHANGELOG.md).
 
 ## Headless và test
 
@@ -59,7 +59,7 @@ Chỉ ở phần nhìn, không đổi file headless:
 - Mây áo kem, khăn đỏ, nón lá. Đèn, đom đóm, Bóng Mực và Gió Lạc dùng bảng màu của ticket.
 - Phần nhìn không ghi thêm gì vào file headless.
 
-Bằng chứng phần lõi: `python3 -m pytest`, kết quả lưu trong [docs/proof/phase-2](docs/proof/phase-2). Bản Phase 1 vẫn nằm ở tag `phase-1`.
+Bằng chứng phần lõi: `python3 -m pytest`, kết quả lưu trong [docs/proof/phase-3](docs/proof/phase-3). Bản Phase 1 vẫn nằm ở tag `phase-1`.
 
 ## Tài liệu lab
 
