@@ -1,0 +1,3 @@
+python -m lantern play --bench
+180 frames, window 1280x720, offscreen
+fps 123.5

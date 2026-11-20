@@ -1,4 +1,4 @@
-"""Headless CLI for Test Contract v1.0."""
+"""Headless CLI for Test Contract v1.1."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         code = exc.code
         return int(code) if isinstance(code, int) else 1
-    if args.night != 1:
-        print("night must be 1 in Phase 1", file=sys.stderr)
+    if args.night not in (1, 2, 3):
+        print("night must be 1, 2, or 3", file=sys.stderr)
         return 1
     if args.ticks < 0 or args.snapshot_every < 1:
         print("ticks must be >= 0 and snapshot-every must be >= 1", file=sys.stderr)
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         scenario = _load_json(args.scenario) if args.scenario else None
         inputs = _load_json(args.inputs) if args.inputs else None
         frames = parse_inputs(inputs)
-        lines = run_simulation(args.seed, scenario, frames, args.ticks, args.snapshot_every)
+        lines = run_simulation(args.seed, scenario, frames, args.ticks, args.snapshot_every, args.night)
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 1

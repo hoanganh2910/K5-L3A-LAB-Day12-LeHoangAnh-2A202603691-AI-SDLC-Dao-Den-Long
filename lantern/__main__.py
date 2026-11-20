@@ -10,7 +10,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args or args[0] in ("-h", "--help"):
         print(
             "usage: python -m lantern play\n"
-            "       python -m lantern headless --seed N --night 1 --ticks N --out FILE",
+            "       python -m lantern headless --seed N --night 1|2|3 --ticks N --out FILE",
             file=sys.stderr,
         )
         return 0 if args and args[0] in ("-h", "--help") else 1

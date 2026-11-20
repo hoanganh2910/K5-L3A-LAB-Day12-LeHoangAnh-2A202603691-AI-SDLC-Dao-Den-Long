@@ -84,6 +84,20 @@ def test_missing_file_exits_1(tmp_path):
     assert completed.returncode == 1
 
 
+def test_night_two_runs(tmp_path):
+    out_path = tmp_path / "out.jsonl"
+    completed = subprocess.run(
+        [sys.executable, "-m", "lantern", "headless", "--seed", "1", "--night", "2", "--ticks", "5", "--out", str(out_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    first = json.loads(out_path.read_text(encoding="utf-8").splitlines()[0])
+    assert first["night"] == 2
+    assert len(first["lanterns"]) == 6
+
+
 def test_wrong_night_exits_1(tmp_path):
     out = tmp_path / "out.jsonl"
     completed = subprocess.run(
@@ -95,7 +109,7 @@ def test_wrong_night_exits_1(tmp_path):
             "--seed",
             "1",
             "--night",
-            "2",
+            "4",
             "--ticks",
             "1",
             "--out",

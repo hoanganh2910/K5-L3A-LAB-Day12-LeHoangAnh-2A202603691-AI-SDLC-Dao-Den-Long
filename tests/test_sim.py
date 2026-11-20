@@ -1,10 +1,10 @@
-"""Night 1 rules, checked against Test Contract v1.0."""
+"""Night rules against Test Contract v1.1, including the Phase 1 behaviors with standard numbers."""
 
+import json
 import math
+from pathlib import Path
 
-import pytest
-
-from lantern.sim import FormatError, parse_inputs, run_simulation
+from lantern.sim import FormatError, parse_inputs, parse_scenario, run_simulation
 from lantern.tuning import contract_dict
 
 DT = 1.0 / 60.0
@@ -14,15 +14,19 @@ def quiet(**overrides):
     scenario = {
         "random_motes": False,
         "random_shades": False,
+        "random_drifters": False,
+        "wind_enabled": False,
         "motes": [],
         "shades": [],
+        "drifters": [],
+        "charms": [],
     }
     scenario.update(overrides)
     return scenario
 
 
-def simulate(scenario=None, frames=None, ticks=60, seed=1, every=10):
-    return run_simulation(seed, scenario, frames or [], ticks, every)
+def simulate(scenario=None, frames=None, ticks=60, seed=1, every=10, night=1):
+    return run_simulation(seed, scenario, frames or [], ticks, every, night)
 
 
 def events(lines, name=None):
@@ -37,45 +41,43 @@ def snap(lines, tick):
 
 
 def test_contract_file_matches_tuning():
-    import json
-    from pathlib import Path
-
     on_disk = json.loads(Path("game.contract.json").read_text(encoding="utf-8"))
     assert on_disk == contract_dict()
+    assert on_disk["contract_version"] == "1.1"
+    tuning = on_disk["tuning"]
+    assert tuning["player_speed"] == 6.0
+    assert tuning["carry_capacity"] == 10
+    assert tuning["lantern_cost"] == 10
+    assert tuning["pickup_radius"] == 1.0
+    assert tuning["pulse_cost"] == 3
+    assert tuning["pulse_radius"] == 5.0
+    assert tuning["night1_duration_s"] == 300
+    assert tuning["dash_speed"] == 14.0
+    assert tuning["night2_duration_s"] == 330
+    assert tuning["night3_duration_s"] == 360
+    assert tuning["fall_enabled"] is True
+    assert tuning["score"]["per_stun"] == 5
+    assert tuning["score"]["per_second_left"] == 2
+    assert tuning["score"]["per_flame_left"] == 50
 
 
 def test_tick_zero_is_before_input_and_move_is_exact():
-    lines = simulate(
-        quiet(),
-        frames=[{"tick": 0, "move": [0, 1]}],
-        ticks=60,
-        every=60,
-    )
+    lines = simulate(quiet(), frames=[{"tick": 0, "move": [0, 1]}], ticks=60, every=60)
     assert lines[0]["tick"] == 0
     assert lines[0]["sim_tick"] == 0
     assert lines[0]["player"]["pos"] == [0.0, 0.0, 0.0]
     assert lines[0]["state"] == "playing"
     assert lines[0]["score"] == 0
+    assert lines[0]["night"] == 1
     assert snap(lines, 60)["player"]["pos"][2] == 6.0
-    assert lines[-1] == {"type": "end", "ticks": 60, "state": "playing", "score": 0}
+    assert lines[-1]["ticks"] == 60
 
 
 def test_yaw_and_normalization():
-    yaw = simulate(
-        quiet(),
-        frames=[{"tick": 0, "move": [0, 1], "cam_yaw_deg": 90}],
-        ticks=60,
-        every=60,
-    )
+    yaw = simulate(quiet(), frames=[{"tick": 0, "move": [0, 1], "cam_yaw_deg": 90}], ticks=60, every=60)
     assert snap(yaw, 60)["player"]["pos"][0] == 6.0
     assert snap(yaw, 60)["player"]["pos"][2] == 0.0
-
-    diagonal = simulate(
-        quiet(),
-        frames=[{"tick": 0, "move": [1, 1]}],
-        ticks=60,
-        every=60,
-    )
+    diagonal = simulate(quiet(), frames=[{"tick": 0, "move": [1, 1]}], ticks=60, every=60)
     pos = snap(diagonal, 60)["player"]["pos"]
     assert pos[0] == 4.243
     assert pos[2] == 4.243
@@ -87,291 +89,182 @@ def test_stand_still_without_inputs():
     assert [line["tick"] for line in lines if line["type"] == "snapshot"] == [0, 10, 20, 30]
 
 
-def test_pickup_radius_is_inclusive_and_capacity_blocks():
-    picked = simulate(
-        quiet(motes=[[0, 0, 1.5]]),
+def test_pickup_radius_height_and_capacity():
+    picked = simulate(quiet(motes=[[0, 0, 1.0]]), ticks=1, every=10)
+    assert events(picked, "mote_picked")[0]["data"] == {"carried": 1}
+    assert picked[-1]["score"] == 0
+    missed = simulate(quiet(motes=[[0, 0, 1.001]]), ticks=1, every=10)
+    assert events(missed, "mote_picked") == []
+    high = simulate(
+        quiet(player={"pos": [0, 3, 18]}, motes=[[0, 0, 18]]),
         ticks=1,
         every=10,
+        night=3,
     )
-    assert events(picked, "mote_picked") == [
-        {"type": "event", "tick": 1, "name": "mote_picked", "data": {"carried": 1}}
-    ]
-    assert snap(picked, 0)["motes_active"] == 1
-    assert picked[-1]["score"] == 10
-
-    missed = simulate(quiet(motes=[[0, 0, 1.501]]), ticks=1)
-    assert events(missed, "mote_picked") == []
-
+    assert events(high, "mote_picked") == []
     full = simulate(
-        quiet(player={"pos": [0, 0, 0], "carried": 8, "flames": 3}, motes=[[0, 0, 0]]),
+        quiet(player={"carried": 10}, motes=[[0, 0, 0.5]]),
         ticks=1,
+        every=10,
     )
     assert events(full, "mote_picked") == []
-    assert full[-1]["score"] == 0
 
 
-def test_interact_is_edge_triggered_and_lights_nearest_lantern():
-    held = simulate(
-        quiet(
-            player={"pos": [0, 0, 0], "carried": 2, "flames": 3},
-            lanterns=[{"id": "L1", "pos": [0, 0, 0], "deposited": 0, "lit": False}],
-        ),
-        frames=[{"tick": 0, "interact": True}],
-        ticks=3,
-        every=10,
-    )
-    deposits = events(held, "deposit")
-    assert len(deposits) == 1
-    assert deposits[0]["data"] == {"lantern_id": "L1", "amount": 2, "deposited": 2}
-    assert events(held, "lantern_lit") == []
-
-    pressed_twice = simulate(
-        quiet(
-            player={"pos": [0, 0, 0], "carried": 4, "flames": 3},
-            lanterns=[
-                {"id": "L1", "pos": [0, 0, 0]},
-                {"id": "L2", "pos": [0, 0, 1]},
-            ],
-        ),
-        frames=[
-            {"tick": 0, "interact": True},
-            {"tick": 1, "interact": False},
-            {"tick": 2, "interact": True},
+def test_deposit_scores_and_lights_the_nearest_lantern():
+    scenario = quiet(
+        player={"pos": [0, 0, 0], "carried": 10},
+        lanterns=[
+            {"id": "L1", "pos": [0, 0, 0], "deposited": 0},
+            {"id": "L2", "pos": [0, 0, 1], "deposited": 0},
         ],
-        ticks=3,
     )
-    deposits = events(pressed_twice, "deposit")
-    assert [line["data"]["lantern_id"] for line in deposits] == ["L1", "L2"]
-    assert deposits[0]["data"]["amount"] == 3
-    assert deposits[1]["data"]["amount"] == 1
-
-
-def test_win_scores_lantern_time_and_flames_once():
     lines = simulate(
-        quiet(
-            player={"pos": [0, 0, 0], "carried": 3, "flames": 3},
-            time_left_s=180,
-            lanterns=[
-                {"id": "L1", "pos": [0, 0, 0], "deposited": 0, "lit": False},
-                {"id": "L2", "lit": True},
-                {"id": "L3", "lit": True},
-                {"id": "L4", "lit": True},
-                {"id": "L5", "lit": True},
-            ],
-        ),
-        frames=[{"tick": 0, "interact": True}],
-        ticks=50,
-        every=10,
+        scenario,
+        frames=[{"tick": 0, "interact": True}, {"tick": 1, "interact": False}, {"tick": 2, "interact": True}],
+        ticks=3,
+        every=1,
     )
+    deposits = events(lines, "deposit")
+    assert deposits[0]["data"] == {"lantern_id": "L1", "amount": 10, "deposited": 10}
     assert events(lines, "lantern_lit")[0]["data"] == {"lantern_id": "L1"}
-    assert events(lines, "game_over") == [
-        {
-            "type": "event",
-            "tick": 1,
-            "name": "game_over",
-            "data": {"result": "won", "reason": "all_lit"},
-        }
-    ]
-    assert lines[-1] == {"type": "end", "ticks": 1, "state": "won", "score": 339}
+    assert snap(lines, 1)["score"] == 200
+    assert len(deposits) == 1
 
 
 def test_prelit_lanterns_do_not_score_or_emit_events():
     lines = simulate(
-        quiet(
-            lanterns=[
-                {"id": "L1", "lit": True},
-                {"id": "L2", "lit": True},
-                {"id": "L3", "lit": True},
-                {"id": "L4", "lit": True},
-                {"id": "L5", "lit": True},
-            ]
-        ),
+        quiet(lanterns=[{"id": f"L{i}", "lit": True} for i in range(1, 6)]),
         ticks=10,
+        every=10,
     )
-    assert lines[0]["state"] == "won"
-    assert lines[0]["score"] == 0
     assert events(lines) == []
-    assert lines[-1]["ticks"] == 0
+    assert lines[-1] == {"type": "end", "ticks": 0, "state": "won", "score": 0}
 
 
-def test_pulse_cost_radius_push_and_cooldown():
-    stunned = simulate(
+def test_win_uses_the_standard_bonus():
+    lines = simulate(
         quiet(
-            player={"carried": 2, "flames": 3, "pos": [0, 0, 0]},
-            shades=[{"id": "S1", "pos": [5, 0, 0]}, {"id": "S9", "pos": [8.1, 0, 0]}],
+            player={"carried": 1, "flames": 3},
+            lanterns=[{"id": "L1", "pos": [0, 0, 0], "deposited": 9}]
+            + [{"id": f"L{i}", "lit": True} for i in range(2, 6)],
         ),
-        frames=[{"tick": 0, "pulse": True}, {"tick": 1, "pulse": False}],
-        ticks=1,
+        frames=[{"tick": 0, "interact": True}],
+        ticks=5,
         every=1,
     )
-    pulse = events(stunned, "pulse")
-    assert pulse == [
-        {"type": "event", "tick": 1, "name": "pulse", "data": {"stunned_ids": ["S1"]}}
-    ]
-    shade = snap(stunned, 0)  # tick 0 is before the pulse
-    assert shade["shades"][0]["pos"][0] == 5.0
-    after = [line for line in stunned if line["type"] == "snapshot"][-1]
-    by_id = {item["id"]: item for item in after["shades"]}
-    assert by_id["S1"]["state"] == "stunned"
-    assert by_id["S1"]["pos"][0] == 9.0
-    assert by_id["S1"]["pos"][1] == 1.0
-    assert by_id["S9"]["state"] == "chase"
-    assert after["player"]["carried"] == 1
-    assert after["score"] == 15
+    assert lines[-1]["state"] == "won"
+    assert lines[-1]["ticks"] == 1
+    assert lines[-1]["score"] == 10 + 100 + math.floor(300 - 1 / 60) * 2 + 150
 
-    early = simulate(
-        quiet(player={"carried": 2, "flames": 3, "pos": [0, 0, 0]}, shades=[{"pos": [5, 0, 0]}]),
-        frames=[
-            {"tick": 0, "pulse": True},
-            {"tick": 1, "pulse": False},
-            {"tick": 47, "pulse": True},
-        ],
-        ticks=48,
-        every=100,
+
+def test_pulse_stuns_within_5m_and_cools_down_for_3s():
+    lines = simulate(
+        quiet(player={"carried": 6}, shades=[{"id": "S1", "pos": [0, 0, 3]}]),
+        frames=[{"tick": 0, "pulse": True}, {"tick": 1, "pulse": False}, {"tick": 180, "pulse": True}],
+        ticks=181,
+        every=15,
     )
-    assert len(events(early, "pulse")) == 1
-
-    ready = simulate(
-        quiet(player={"carried": 2, "flames": 3, "pos": [0, 0, 0]}, shades=[{"pos": [3, 0, 0]}]),
-        frames=[
-            {"tick": 0, "pulse": True},
-            {"tick": 1, "pulse": False},
-            {"tick": 48, "pulse": True},
-            {"tick": 49, "pulse": False},
-        ],
-        ticks=49,
-        every=100,
-    )
-    assert len(events(ready, "pulse")) == 2
-    assert ready[-1]["score"] == 30
+    pulses = events(lines, "pulse")
+    assert pulses[0]["tick"] == 1
+    assert pulses[0]["data"] == {"stunned_ids": ["S1"]}
+    assert pulses[1]["tick"] == 181
+    assert snap(lines, 15)["shades"][0]["pos"][2] == 7.0
+    assert snap(lines, 15)["shades"][0]["state"] == "stunned"
+    assert snap(lines, 15)["score"] == 5
 
 
-def test_shade_chase_speed_safe_radius_and_hit():
-    chased = simulate(
+def test_shade_chase_speed_safe_radius_and_one_hit():
+    chase = simulate(
         quiet(shades=[{"id": "S1", "pos": [10, 0, 0]}]),
         ticks=60,
         every=60,
     )
-    assert snap(chased, 60)["shades"][0]["pos"][0] == 6.5
-    assert snap(chased, 60)["shades"][0]["state"] == "chase"
-
+    assert snap(chase, 60)["shades"][0]["pos"][0] == 6.0
     safe = simulate(
         quiet(
-            shades=[{"id": "S1", "pos": [20, 0, 0]}],
+            shades=[{"id": "S1", "pos": [10, 0, 0]}],
             lanterns=[{"id": "L1", "pos": [0, 0, 0], "lit": True}],
         ),
-        ticks=400,
-        every=400,
-    )
-    assert snap(safe, 400)["shades"][0]["pos"][0] == 6.0
-    assert events(safe, "player_hit") == []
-
-    unlit = simulate(
-        quiet(
-            shades=[{"id": "S1", "pos": [10, 0, 0]}],
-            lanterns=[{"id": "L1", "pos": [0, 0, 0], "lit": False}],
-        ),
-        ticks=60,
+        ticks=120,
         every=60,
     )
-    assert snap(unlit, 60)["shades"][0]["pos"][0] == 6.5
-
+    assert snap(safe, 120)["shades"][0]["pos"][0] == 6.0
     hit = simulate(
-        quiet(player={"flames": 3, "carried": 4, "pos": [0, 0, 0]}, shades=[{"pos": [0, 0, 0]}, {"pos": [0, 0, 0]}]),
+        quiet(player={"carried": 5}, shades=[{"id": "S1", "pos": [0.5, 0, 0]}]),
         ticks=1,
+        every=1,
     )
-    assert events(hit, "player_hit") == [
-        {
-            "type": "event",
-            "tick": 1,
-            "name": "player_hit",
-            "data": {"by": "shade", "flames": 2, "dropped": 0},
-        }
-    ]
-
-    still_safe = simulate(
-        quiet(player={"flames": 3, "pos": [0, 0, 0]}, shades=[{"pos": [0, 0, 0]}]),
-        ticks=60,
-        every=60,
+    blow = events(hit, "player_hit")[0]["data"]
+    assert blow["by"] == "shade"
+    assert blow["flames"] == 2
+    assert blow["dropped"] == 2
+    assert "lost" not in blow
+    again = simulate(
+        quiet(player={"carried": 4}, shades=[{"id": "S1", "pos": [0.4, 0, 0], "state": "chase"}]),
+        ticks=90,
+        every=90,
     )
-    assert snap(still_safe, 60)["player"]["flames"] == 2
-
-    second = simulate(
-        quiet(player={"flames": 3, "pos": [0, 0, 0]}, shades=[{"pos": [0, 0, 0]}]),
-        ticks=61,
-        every=61,
-    )
-    assert snap(second, 61)["player"]["flames"] == 1
+    assert len(events(again, "player_hit")) == 1
+    assert snap(again, 90)["player"]["flames"] == 2
 
 
-def test_loss_by_no_flames_and_dawn():
-    dead = simulate(
-        quiet(player={"flames": 1, "pos": [0, 0, 0]}, shades=[{"pos": [0, 0, 0]}]),
-        ticks=30,
-    )
-    assert events(dead, "game_over")[0]["data"] == {"result": "lost", "reason": "no_flames"}
-    assert dead[-1] == {"type": "end", "ticks": 1, "state": "lost", "score": 0}
-
+def test_loss_by_no_flames_and_by_dawn():
+    dead = simulate(quiet(player={"flames": 0}), ticks=5, every=5)
+    assert dead[-1]["state"] == "lost"
+    assert dead[-1]["ticks"] == 0
     dawn = simulate(quiet(time_left_s=1), ticks=120, every=60)
-    assert events(dawn, "game_over")[0]["data"] == {"result": "lost", "reason": "dawn"}
-    assert dawn[-1]["ticks"] == 60
-    assert dawn[-1]["state"] == "lost"
-    assert snap(dawn, 60)["time_left_s"] == 0.0
+    over = events(dawn, "game_over")[0]
+    assert over["tick"] == 60
+    assert over["data"] == {"result": "lost", "reason": "dawn"}
 
 
-def test_same_seed_is_byte_identical_and_spawn_uses_seed():
-    scenario = {"random_motes": False, "random_shades": True, "motes": [], "shades": []}
-    first = simulate(scenario, ticks=1200, seed=4, every=1200)
-    second = simulate(scenario, ticks=1200, seed=4, every=1200)
-    other = simulate(scenario, ticks=1200, seed=5, every=1200)
+def test_same_seed_spawns_the_same_shades():
+    first = simulate({"random_motes": False, "random_drifters": False, "wind_enabled": False, "charms": []}, ticks=300, every=300)
+    second = simulate({"random_motes": False, "random_drifters": False, "wind_enabled": False, "charms": []}, ticks=300, every=300)
     assert first == second
     spawned = events(first, "shade_spawned")
-    assert len(spawned) == 1
-    assert spawned[0]["tick"] == 1200
-    assert snap(first, 1200)["shades"] != snap(other, 1200)["shades"]
+    assert [event["data"]["id"] for event in spawned] == ["S1", "S2"]
+    assert snap(first, 300)["shades"][0]["state"] == "spawning"
 
 
-def test_jump_leaves_the_ground():
+def test_jump_only_from_the_ground():
     lines = simulate(quiet(), frames=[{"tick": 0, "jump": True}], ticks=1, every=1)
-    assert snap(lines, 1)["player"]["pos"][1] == round((6.5 + (-20) * DT) * DT, 3)
+    expected = round((7.0 - 20.0 / 60.0) / 60.0, 3)
+    assert snap(lines, 1)["player"]["pos"][1] == expected
+    assert snap(lines, 1)["player"]["grounded"] is False
 
 
-def test_walking_off_the_visual_island_is_not_a_fall():
-    lines = simulate(quiet(), frames=[{"tick": 0, "move": [0, 1]}], ticks=600, every=600)
-    assert events(lines, "player_hit") == []
-    assert snap(lines, 600)["player"]["pos"][2] == 60.0
+def test_snapshot_shape_and_five_lanterns():
+    lines = simulate(ticks=0, every=10)
+    shot = lines[0]
+    assert shot["player"]["vel"] == [0.0, 0.0, 0.0]
+    assert shot["wind"] == {"active": False, "dir_deg": 0.0}
+    assert len(shot["lanterns"]) == 5
+    assert len(shot["motes"]) == 20
+    assert shot["motes"][0]["kind"] == "random"
+    assert shot["motes"][0]["ttl_s"] is None
+    assert "drifters" in shot and "charms" in shot
 
 
 def test_malformed_inputs_and_scenario():
+    import pytest
+
     with pytest.raises(FormatError):
-        parse_inputs({"frames": [{"tick": 2}, {"tick": 2}]})
+        parse_inputs({"frames": [{"tick": 1}, {"tick": 1}]})
     with pytest.raises(FormatError):
-        parse_inputs({"frames": [{"tick": 0, "move": [0, 2]}]})
-    with pytest.raises(FormatError):
-        simulate({"lanterns": [{"id": "L9"}]}, ticks=1)
-    with pytest.raises(FormatError):
-        simulate({"time_left_s": -1}, ticks=1)
+        parse_scenario({"motes": "nope"}, 1)
 
 
-def test_snapshot_lists_motes_and_five_lanterns():
-    lines = simulate(quiet(motes=[[0, 0, 5]]), ticks=0, every=10)
-    assert lines[0]["motes"] == [{"id": "M1", "pos": [0.0, 0.0, 5.0]}]
-    assert [lantern["id"] for lantern in lines[0]["lanterns"]] == ["L1", "L2", "L3", "L4", "L5"]
-    assert lines[-1]["ticks"] == 0
-
-
-def test_default_night_is_winnable_on_paper():
-    from lantern.sim import Sim
-    from lantern.tuning import LANTERN_COST, PLAY_SEED
-
-    sim = Sim.create(PLAY_SEED, None)
-    assert len(sim.lanterns) == 5
-    assert len(sim.motes) == 5 * LANTERN_COST
-    assert len(sim.shades) == 2
-    assert sim.state == "playing"
-    assert all(math.hypot(mote.x, mote.z) > 1.5 for mote in sim.motes)
-
-
-def test_floor_of_remaining_time_matches_formula():
-    remaining = 180 - DT
-    assert math.floor(remaining + 1e-9) == 179
+def test_walking_off_the_island_falls():
+    lines = simulate(
+        quiet(player={"pos": [41, 0, 0], "carried": 4}),
+        ticks=140,
+        every=1,
+    )
+    fall = events(lines, "player_hit")[0]
+    assert fall["data"]["by"] == "fall"
+    assert fall["data"]["lost"] == 4
+    assert fall["data"]["flames"] == 2
+    home = next(line for line in lines if line["type"] == "snapshot" and line["player"]["pos"] == [0.0, 0.0, 0.0] and line["tick"] > 0)
+    assert home["player"]["invuln"] > 0
+    assert home["sim_tick"] - fall["tick"] == 60

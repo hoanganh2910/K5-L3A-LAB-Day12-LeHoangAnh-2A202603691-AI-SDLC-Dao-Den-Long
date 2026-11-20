@@ -1,81 +1,89 @@
-"""Single source of truth for Night 1 numbers and game.contract.json."""
+"""Standard Night 1–3 numbers. game.contract.json is generated from contract_dict()."""
 
 from __future__ import annotations
 
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"
 TEAM = "2A202603691-LeHoangAnh"
 BUILD_CMD = "python3 -m pip install -r requirements.txt"
 RUN_CMD = "python3 -m lantern play"
 HEADLESS_CMD = "python3 -m lantern headless"
 
 PLAYER_SPEED = 6.0
-CARRY_CAPACITY = 8
-LANTERN_COST = 3
+CHARM_SPEED = 7.2
+CARRY_CAPACITY = 10
+LANTERN_COST = 10
 LANTERN_COUNT_NIGHT1 = 5
-PICKUP_RADIUS = 1.5
+PICKUP_RADIUS = 1.0
+PICKUP_HEIGHT = 1.5
 INTERACT_RADIUS = 2.0
-PULSE_COST = 1
-PULSE_RADIUS = 8.0
-NIGHT1_DURATION_S = 180
+PULSE_COST = 3
+PULSE_RADIUS = 5.0
+PULSE_CENTER_Y = 0.8
+NIGHT1_DURATION_S = 300
+NIGHT2_DURATION_S = 330
+NIGHT3_DURATION_S = 360
 FLAMES = 3
-INVULN_S = 1.0
-HIT_DROP_RATIO = 0.0
-PULSE_STUN_S = 1.5
+INVULN_S = 1.5
+HIT_DROP_RATIO = 0.5
+PULSE_STUN_S = 2.0
 PULSE_PUSH_M = 4.0
-PULSE_COOLDOWN_S = 0.8
+PULSE_PUSH_TICKS = 15
+PULSE_COOLDOWN_S = 3.0
 SAFE_RADIUS = 6.0
-SHADE_SPEED = 3.5
-SHADE_HIT_RADIUS = 1.2
-FALL_ENABLED = False
+SAFE_EJECT_TICKS = 30
+SHADE_SPEED = 4.0
+SHADE_SPEED_NIGHT3 = 4.5
+SHADE_HIT_RADIUS = 1.0
+SHADE_HIT_HEIGHT = 1.5
+SHADE_DETECT = 12.0
+SHADE_LEASH = 18.0
+SHADE_RECOIL_M = 2.0
+SHADE_RECOIL_TICKS = 60
+FALL_ENABLED = True
+FALL_Y = -10.0
+FALL_WAIT_TICKS = 60
+
+JUMP_SPEED = 7.0
+GRAVITY = -20.0
+DASH_SPEED = 14.0
+DASH_DURATION_S = 0.2
+DASH_COOLDOWN_S = 1.5
 
 SCORE_PER_MOTE = 10
 SCORE_PER_LANTERN = 100
-SCORE_PER_STUN = 15
-SCORE_PER_SECOND_LEFT = 1
-SCORE_PER_FLAME_LEFT = 20
+SCORE_PER_STUN = 5
+SCORE_PER_SECOND_LEFT = 2
+SCORE_PER_FLAME_LEFT = 50
 
-# Not part of the contract. Documented in docs/notes/phase1-assumptions.md.
-JUMP_SPEED = 6.5
-GRAVITY = -20.0
-SHADE_CENTER_Y = 1.0
-SPAWN_INTERVAL_S = 20
-SHADE_CAP = 4
-SPAWN_RADIUS = 28.0
-ISLAND_RADIUS = 40.0
+DROP_TTL_TICKS = 480
+DROP_RING_MIN = 1.5
+DROP_RING_MAX = 2.5
+CHARM_TICKS = 600
+CHARM_RESPAWN_TICKS = 2700
+DRIFTER_SPEED = 7.0
+DRIFTER_IDLE_SPEED = 2.0
+DRIFTER_CHASE_RANGE = 15.0
+DRIFTER_STEAL_RADIUS = 1.2
+DRIFTER_STEAL_MAX = 3
+DRIFTER_FLEE_TICKS = 240
+DRIFTER_DROP_TICKS = 120
+DRIFTER_CARRY_NEED = 5
+WIND_PUSH = 2.0
 PLAY_SEED = 1
 
-# Feet of each pole. The round island is only a visual; the sim is an open XZ plane.
-DEFAULT_LANTERNS = (
-    ("L1", 0.0, 0.0, 22.0),
-    ("L2", 21.0, 0.0, 7.0),
-    ("L3", 13.0, 0.0, -18.0),
-    ("L4", -13.0, 0.0, -18.0),
-    ("L5", -21.0, 0.0, 7.0),
-)
+SHADE_CENTER_Y = 1.0
+DT = 1.0 / 60.0
 
-# Exactly 15 motes: five lanterns times lantern_cost. Hand-placed, not seed-random.
-DEFAULT_MOTES = (
-    (0.0, 0.0, 16.0),
-    (4.0, 0.0, 20.0),
-    (-4.0, 0.0, 19.0),
-    (16.0, 0.0, 7.0),
-    (18.0, 0.0, 12.0),
-    (22.0, 0.0, 2.0),
-    (13.0, 0.0, -12.0),
-    (8.0, 0.0, -16.0),
-    (16.0, 0.0, -16.0),
-    (-13.0, 0.0, -12.0),
-    (-8.0, 0.0, -16.0),
-    (-16.0, 0.0, -15.0),
-    (-16.0, 0.0, 7.0),
-    (-18.0, 0.0, 12.0),
-    (-20.0, 0.0, 2.0),
-)
 
-DEFAULT_SHADES = (
-    ("S1", 12.0, 0.0, 14.0),
-    ("S2", -12.0, 0.0, -8.0),
-)
+def ticks_of(seconds: float) -> int:
+    return int(round(seconds * 60))
+
+
+DASH_TICKS = ticks_of(DASH_DURATION_S)
+DASH_COOLDOWN_TICKS = ticks_of(DASH_COOLDOWN_S)
+PULSE_COOLDOWN_TICKS = ticks_of(PULSE_COOLDOWN_S)
+PULSE_STUN_TICKS = ticks_of(PULSE_STUN_S)
+INVULN_TICKS = ticks_of(INVULN_S)
 
 
 def contract_dict() -> dict:
@@ -112,5 +120,10 @@ def contract_dict() -> dict:
                 "per_second_left": SCORE_PER_SECOND_LEFT,
                 "per_flame_left": SCORE_PER_FLAME_LEFT,
             },
+            "dash_speed": DASH_SPEED,
+            "dash_duration_s": DASH_DURATION_S,
+            "dash_cooldown_s": DASH_COOLDOWN_S,
+            "night2_duration_s": NIGHT2_DURATION_S,
+            "night3_duration_s": NIGHT3_DURATION_S,
         },
     }

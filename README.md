@@ -1,6 +1,6 @@
 # Đảo Đèn Lồng
 
-Đêm 1 – Đảo Bến. Mây nhặt đom đóm, thắp 5 Đèn Lồng Lớn, và né Bóng Mực.
+Ba đêm: Đảo Bến, Đảo Cau, Đảo Chuông. Mây nhặt đom đóm, thắp đèn, né Bóng Mực và Gió Lạc.
 
 Video demo sẽ gắn ở đây khi có bản phát hành.
 
@@ -19,26 +19,28 @@ Trên Windows, dùng `python` thay cho `python3` và `.venv\Scripts\activate`. H
 ## Điều khiển
 
 - WASD hoặc phím mũi tên: đi. Hướng phụ thuộc camera.
-- Chuột: xoay camera. Esc khóa hoặc mở chuột.
-- Space: nhảy.
+- Chuột: xoay camera.
+- Space: nhảy khi đang chạm đất.
+- Shift trái: lướt.
 - E: nạp đom đóm đang mang vào đèn gần nhất chưa sáng.
-- F: tỏa sáng, xua Bóng Mực, tốn 1 đom đóm.
-- R: chơi lại sau khi thắng hoặc thua.
+- F: tỏa sáng, tốn 3 đom đóm.
+- Esc hoặc P: tạm dừng. Trong menu tạm dừng, phím 1 đến 4 chọn tiếp tục, chơi lại, cài đặt, về menu.
+- Enter: bắt đầu, vào đêm, hoặc sang đêm sau.
 
 ## Cách tính điểm
 
-- Nhặt 1 đom đóm: 10.
+- Nạp 1 đom đóm vào đèn: 10.
 - Thắp 1 đèn: 100.
-- Mỗi Bóng Mực bị choáng: 15.
-- Chỉ khi thắng: thêm số giây còn lại (làm tròn xuống) và 20 điểm cho mỗi máu còn lại.
+- Mỗi Bóng Mực trúng Tỏa Sáng: 5.
+- Chỉ khi thắng đêm: thêm `floor(giây còn lại) × 2` và 50 điểm cho mỗi Ngọn Lửa còn lại.
 
-Thua không được thưởng thời gian hay máu. Đèn đặt sẵn sáng trong scenario headless không được điểm.
+Tổng điểm ở màn Bình Minh là tổng điểm các đêm đã thắng. Thua không được thưởng thời gian hay máu. Đèn đặt sẵn sáng trong scenario headless không được điểm.
 
 ## Luật Đêm 1
 
-Máu bắt đầu bằng 3. Túi mang tối đa 8 đom đóm. Mỗi đèn cần 3 đom đóm. Chạm Bóng Mực mất 1 máu và bất tử 1 giây, không làm rơi đom đóm. Tỏa sáng tầm 8 mét, choáng 1,5 giây, đẩy ra 4 mét, hồi 0,8 giây. Đèn đã thắp có vòng an toàn 6 mét. Đêm dài 180 giây. Hết máu thì thua. Hết giờ thì bình minh và thua. Thắp hết 5 đèn thì thắng.
+Ngọn Lửa bắt đầu bằng 3 và hồi đầy đầu mỗi đêm. Túi mang tối đa 10. Mỗi đèn cần 10 đom đóm. Đêm 1, 2, 3 dài 300, 330 và 360 giây. Hết Ngọn Lửa thì thua. Thắp hết đèn thì thắng, kể cả đúng tick hết giờ. Hết giờ mà chưa thắp hết thì thua. Rơi khỏi đảo khi Y < −10.
 
-Các số này nằm trong [game.contract.json](game.contract.json) và [lantern/tuning.py](lantern/tuning.py). Giả định cho chỗ PRD không nói rõ: [docs/notes/phase1-assumptions.md](docs/notes/phase1-assumptions.md).
+Các số này nằm trong [game.contract.json](game.contract.json) và [lantern/tuning.py](lantern/tuning.py). Giả định: [docs/notes/phase2-assumptions.md](docs/notes/phase2-assumptions.md). Tiêu chí phần mới: [docs/notes/phase2-spec.md](docs/notes/phase2-spec.md).
 
 ## Headless và test
 
@@ -47,17 +49,17 @@ python3 -m lantern headless --seed 1 --night 1 --ticks 300 --out out.jsonl
 python3 -m pytest
 ```
 
-Có thể thêm `--scenario tinh_huong.json --inputs phim.json --snapshot-every 10`. Cùng seed, cùng scenario và cùng inputs thì file kết quả giống nhau từng byte. JSON sai định dạng thì lệnh thoát với mã 2.
+`--night` nhận 1, 2 hoặc 3. Có thể thêm `--scenario tinh_huong.json --inputs phim.json --snapshot-every 10`. Cùng seed, cùng scenario và cùng inputs thì file kết quả giống nhau từng byte. JSON sai định dạng thì lệnh thoát với mã 2.
 
 ## Sáng tạo của tôi
 
 Chỉ ở phần nhìn, không đổi file headless:
 
-- Đảo tròn có vân cỏ, biển quanh đảo, Mây có áo và nón lá, đèn và đom đóm có quầng sáng.
-- Vũng sáng vàng dưới mỗi đèn đã thắp. Sương tím nhạt dần khi đảo sáng thêm đèn.
-- Đom đóm nhấp nhô khi vẽ. Trong mô phỏng chúng vẫn là điểm trên mặt đất.
+- Ba đảo vẽ theo bản đồ chuẩn: biển mây, cầu tre, tầng, dốc, tháp chuông và bục nhảy.
+- Mây áo kem, khăn đỏ, nón lá. Đèn, đom đóm, Bóng Mực và Gió Lạc dùng bảng màu của ticket.
+- Phần nhìn không ghi thêm gì vào file headless.
 
-Bằng chứng phần lõi vẫn đúng: `python3 -m pytest`, kết quả lưu trong [docs/proof/phase-1](docs/proof/phase-1).
+Bằng chứng phần lõi: `python3 -m pytest`, kết quả lưu trong [docs/proof/phase-2](docs/proof/phase-2). Bản Phase 1 vẫn nằm ở tag `phase-1`.
 
 ## Tài liệu lab
 

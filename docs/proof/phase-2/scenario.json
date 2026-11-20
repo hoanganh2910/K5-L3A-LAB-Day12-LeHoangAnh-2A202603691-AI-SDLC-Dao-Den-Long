@@ -1,0 +1,12 @@
+{
+  "random_motes": false,
+  "random_shades": false,
+  "random_drifters": false,
+  "wind_enabled": false,
+  "player": { "pos": [0, 0, 0], "carried": 4, "flames": 3 },
+  "motes": [[0, 0, 0.8]],
+  "shades": [{ "id": "S1", "pos": [4, 0, 0], "state": "chase" }],
+  "drifters": [{ "id": "D1", "pos": [20, 1, 0], "state": "idle", "stolen": 0 }],
+  "charms": [],
+  "lanterns": [{ "id": "L1", "pos": [0, 0, 1.5], "deposited": 0 }]
+}
