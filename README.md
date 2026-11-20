@@ -53,9 +53,9 @@ Có thể thêm `--scenario tinh_huong.json --inputs phim.json --snapshot-every 
 
 Chỉ ở phần nhìn, không đổi file headless:
 
-- Vũng sáng vàng dưới mỗi đèn đã thắp.
-- Sương tím nhạt dần khi đảo sáng thêm đèn.
-- Đom đóm nhấp nhô và đổi màu khi vẽ; trong mô phỏng chúng vẫn là điểm trên mặt đất.
+- Đảo tròn có vân cỏ, biển quanh đảo, Mây có áo và nón lá, đèn và đom đóm có quầng sáng.
+- Vũng sáng vàng dưới mỗi đèn đã thắp. Sương tím nhạt dần khi đảo sáng thêm đèn.
+- Đom đóm nhấp nhô khi vẽ. Trong mô phỏng chúng vẫn là điểm trên mặt đất.
 
 Bằng chứng phần lõi vẫn đúng: `python3 -m pytest`, kết quả lưu trong [docs/proof/phase-1](docs/proof/phase-1).
 
