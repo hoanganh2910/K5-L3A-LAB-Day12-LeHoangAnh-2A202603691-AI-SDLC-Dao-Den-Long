@@ -204,6 +204,7 @@ class Sim:
     edges: dict = field(default_factory=lambda: {
         "jump": False, "interact": False, "pulse": False, "dash": False, "pause": False
     })
+    bench: bool = False
 
     @classmethod
     def create(cls, seed: int, scenario: dict | None, night: int = 1) -> "Sim":
@@ -291,6 +292,11 @@ class Sim:
 
     def step(self) -> list[dict]:
         """One contract step. Events use tick = the wall tick this step produces."""
+        if self.bench and self.state == "playing":
+            self._move_shades()
+            self.sim_tick += 1
+            self.tick += 1
+            return []
         if self.edges["pause"] and self.state == "playing":
             self.state = "paused"
             event = self._event("paused", {})

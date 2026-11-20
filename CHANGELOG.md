@@ -1,5 +1,15 @@
 # Changelog
 
+## Phase 4 — Contract v1.3
+
+Không đổi luật Đêm. Thêm phát hành:
+
+- `contract_version` là `1.3`. `game.contract.json` thêm `bench_cmd` và `soak_cmd`.
+- `python -m lantern bench` đo cửa sổ 1280×720. `python -m lantern soak` chạy nhiều Đêm headless trong một tiến trình.
+- Bảng xếp hạng cục bộ, xuất bằng `python -m lantern play --export-leaderboard`.
+- Đổi phím, phụ đề, giảm chuyển động, chữ lớn. Lưu cùng cài đặt cũ.
+- Test `test_contract_file_matches_tuning` đổi kỳ vọng phiên bản từ 1.2 sang 1.3 và kiểm tra hai lệnh mới. Số tuning không đổi. Không có test nào bị skip.
+
 ## Phase 3 — Contract v1.2
 
 Phá vỡ tương thích với v1.1:
@@ -17,6 +27,10 @@ Test được sửa, không bỏ qua:
 - `test_deposit_scores_and_lights_the_nearest_lantern` chờ 150 điểm và `relight: false`. Thắp một đèn không kết thúc đêm.
 - `test_prelit_lanterns_do_not_score_or_emit_events` không còn chờ thắng ngay. Đèn đặt sẵn có dầu 100 và đêm vẫn đang chơi.
 - `test_win_uses_the_standard_bonus` đổi thành `test_dawn_survived_replaces_the_early_all_lit_win`. Không còn thưởng `floor(giây còn lại) × 2`.
+
+## Phase 1 — Contract v1.0
+
+Đêm 1 chơi được và có headless. Tag `phase-1`.
 
 ## Phase 2 — Contract v1.1
 

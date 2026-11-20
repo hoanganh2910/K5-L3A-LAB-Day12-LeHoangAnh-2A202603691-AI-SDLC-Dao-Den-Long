@@ -46,3 +46,18 @@ Cùng công cụ Cursor. Giao diện vẫn không có bộ đếm token, nên kh
 
 - Một lần bấm châm dầu xảy ra sau bước trừ dầu, nên `ceil((100 − fuel) / 10)` phải tính trên dầu đã hao 1/60 của tick đó.
 - Dòng `end` luôn được ghi khi chạy hết số tick, kể cả khi còn đang chơi. Test "không thắng sớm" phải nhìn `state`, không phải loại dòng cuối.
+
+# Nhật ký dùng AI — Phase 4
+
+Vẫn là Cursor, vẫn không có bộ đếm token. Không ghi số ước.
+
+## Cách làm
+
+- Tách công thức FPS, cảnh bench, soak và bảng xếp hạng ra module không import Ursina, rồi mới mở cửa sổ.
+- `Sim.bench` là một nhánh tắt trong `step`. Headless thường không bật cờ này.
+- Soak và pytest chạy trước. Cửa sổ benchmark chạy sau, và file json là số đo thật.
+
+## Lỗi đã bắt
+
+- Đọc RSS trên Windows bằng `psapi` trả về rỗng. Đổi sang `K32GetProcessMemoryInfo` thì đo được.
+- Cửa sổ benchmark có lúc bị tắt giữa chừng nên file chưa kịp ghi. Lệnh đo ghi lại file theo từng mốc 5 giây để còn số khi tiến trình dừng.

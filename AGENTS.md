@@ -7,6 +7,10 @@ Luật nằm trong `lantern/tuning.py` và bản đồ trong `lantern/world.py`.
 - Chơi: `python -m lantern play`
 - Headless: `python -m lantern headless --seed 1 --night 1 --ticks 300 --out out.jsonl`
 - Test: `python -m pytest`
+- Bench: `python -m lantern bench --seed 42 --duration 30 --out bench.json`
+- Soak: `python -m lantern soak --seed 7 --nights 10 --out soak.json`
+
+`Sim.bench` chỉ bật trong cảnh benchmark. Headless thường không đi qua nhánh đó.
 
 `--night` nhận 1, 2 hoặc 3. Headless không được import Ursina. View chỉ đọc trạng thái sim.
 

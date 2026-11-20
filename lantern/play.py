@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import struct
 import sys
@@ -25,6 +26,18 @@ INTROS = {
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--export-leaderboard" in args:
+        from lantern.leaderboard import export_payload
+
+        index = args.index("--export-leaderboard")
+        if index + 1 >= len(args):
+            print("export-leaderboard needs a file path", file=sys.stderr)
+            return 2
+        payload = export_payload()
+        with open(args[index + 1], "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        return 0
     bench = "--bench" in args
     try:
         from ursina import AmbientLight, DirectionalLight, Text, Ursina, camera, color, mouse, scene, window
@@ -58,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 class Game:
-    def __init__(self, color_module, text_cls, camera, scene, ambient, bench: bool):
+    def __init__(self, color_module, text_cls, camera, scene, ambient, bench: bool, contract: dict | None = None):
         from ursina import Entity
 
         self.color = color_module
@@ -68,6 +81,8 @@ class Game:
         self.scene = scene
         self.ambient = ambient
         self.bench = bench
+        self.contract = contract
+        self.contract_bench = contract is not None
         self.shader = _shader()
         self.sounds = _sounds()
         self.settings = _load_settings()
@@ -96,13 +111,45 @@ class Game:
         self.cooldowns = text_cls(text="", position=(0.86, -0.42), origin=(0.5, 0), scale=0.9, color=ink)
         self.prompt = text_cls(text="", position=(0, -0.28), origin=(0, 0), scale=1.0, color=ink)
         self.arrow = text_cls(text="", position=(0, 0), origin=(0, 0), scale=1.4, color=_hex(color_module, GOLD))
-        self.banner = text_cls(text="", origin=(0, 0), scale=1.6, color=ink)
-        self.help_text = text_cls(text="", position=(0, -0.48), origin=(0, 0), scale=0.7, color=ink)
+        self.edge_arrow = text_cls(text="", position=(0, 0), origin=(0, 0), scale=1.2, color=_hex(color_module, DANGER))
+        self.caption = text_cls(text="", position=(-0.86, 0.32), origin=(-0.5, 0.5), scale=1.0, color=ink)
+        self.banner = text_cls(text="", origin=(0, 0), scale=1.5, color=ink)
+        self.help_text = text_cls(text="", position=(0, -0.48), origin=(0, 0), scale=1.0, color=ink)
+        self.cooldowns.scale = 1
+        self._labels = [
+            (self.flames, 1.15),
+            (self.clock, 1.4),
+            (self.stats, 1.05),
+            (self.pips, 1.3),
+            (self.cooldowns, 1.0),
+            (self.prompt, 1.0),
+            (self.arrow, 1.4),
+            (self.edge_arrow, 1.2),
+            (self.caption, 1.0),
+            (self.banner, 1.5),
+            (self.help_text, 1.0),
+        ]
+        self.flash = Entity(parent=camera.ui, model="quad", scale=(3, 2), color=_hex(color_module, "#FF5A5F", 0), z=-0.2)
+        self.flash_left = 0.0
+        self.shake = 0.0
+        self.known_shades = None
+        self.alert_until = 0.0
+        self.alert_shade = None
+        self.name_buffer = ""
+        self.after_name = "menu"
+        self.bind_action = None
+        self.bench_samples: list[float] = []
+        self.bench_peak = None
+        self.bench_first = None
+        self.bench_shot = False
+        self._apply_font()
         self._root = Entity()
         self._root.update = self._update
         self._root.input = self._input
         self._show_menu()
-        if bench:
+        if self.contract_bench:
+            self._begin_contract()
+        elif bench:
             self._begin_night()
 
     def _hx(self, value: str, alpha: int = 255):
@@ -114,7 +161,7 @@ class Game:
     def _show_menu(self) -> None:
         self.mode = "menu"
         self._hide_hud()
-        self.banner.text = "Đảo Đèn Lồng\n\nEnter — Bắt đầu"
+        self.banner.text = "Đảo Đèn Lồng\n\nEnter — Bắt đầu\nL — Bảng xếp hạng"
         self.help_text.text = "Ba đêm. Giữ đảo sáng tới bình minh."
         self._music(False)
 
@@ -138,9 +185,30 @@ class Game:
         self._show_hud()
         from ursina import mouse
 
-        if not self.bench:
+        if not self.bench and not self.contract_bench:
             mouse.locked = True
         self._music(True)
+
+    def _begin_contract(self) -> None:
+        from lantern.benchscene import bench_scenario
+
+        self._clear_world()
+        seed = int(self.contract["seed"])
+        self.sim = Sim.create(seed, bench_scenario(seed), 1)
+        self.sim.bench = True
+        self.yaw = 0.0
+        self.acc = 0.0
+        self.known_shades = None
+        self._build_world()
+        self._build_player()
+        self.mode = "play"
+        self.banner.text = ""
+        self._show_hud()
+
+    def _apply_font(self) -> None:
+        factor = 1.25 if self.settings.get("large_text") else 1.0
+        for label, base in self._labels:
+            label.scale = base * factor
 
     def _finish_night(self) -> None:
         sim = self.sim
@@ -149,27 +217,56 @@ class Game:
             self._play("win")
             self.scores.append(sim.score)
             if self.night == 3:
-                self.mode = "dawn"
-                total = sum(self.scores)
-                self.banner.text = f"Bình Minh\n\nTổng điểm {total}\n\nEnter — Về menu"
-                self._hide_hud()
+                self.after_name = "dawn"
+                self._ask_name()
                 return
             self.mode = "result"
             self.banner.text = f"Đêm {self.night} sáng\nĐiểm {sim.score}\n\nEnter — Đêm sau"
         else:
             self._play("lose")
-            self.mode = "result"
-            self.banner.text = f"Đêm {self.night} tắt\n\nEnter — Chơi lại đêm này"
+            self.after_name = "result"
+            self._ask_name()
+            return
         self._hide_hud()
 
+    def _ask_name(self) -> None:
+        self.mode = "naming"
+        self.name_buffer = ""
+        self._hide_hud()
+        from ursina import mouse
+
+        mouse.locked = False
+        self._naming_text()
+
+    def _naming_text(self) -> None:
+        self.banner.text = (
+            f"Tên để lưu điểm (3–12 ký tự)\n\n{self.name_buffer}_\n\nEnter — Lưu    Esc — Bỏ qua"
+        )
+
     def _input(self, key: str) -> None:
-        if key in ("escape", "p") and self.mode == "play":
+        if self.contract_bench:
+            return
+        pause_key = self.settings["keys"].get("pause", "escape")
+        if key in (pause_key, "p") and self.mode == "play":
             self.mode = "pause"
             self.banner.text = "Tạm dừng\n\n1 Tiếp tục\n2 Chơi lại Đêm\n3 Cài đặt\n4 Về menu"
             self._music(False)
             from ursina import mouse
 
             mouse.locked = False
+            return
+        if self.mode == "naming":
+            self._name_key(key)
+            return
+        if self.mode == "board":
+            if key == "enter":
+                self._show_menu()
+            return
+        if self.mode == "bind_wait":
+            self._capture_key(key)
+            return
+        if self.mode == "bind":
+            self._bind_menu_key(key)
             return
         if self.mode == "pause":
             if key == "1":
@@ -202,6 +299,19 @@ class Game:
                 self.settings["sensitivity"] = min(3.0, round(self.settings["sensitivity"] + 0.1, 2))
             elif key == "c":
                 self.settings["colorblind"] = not self.settings.get("colorblind", False)
+            elif key == "g":
+                self.settings["reduce_motion"] = not self.settings.get("reduce_motion", False)
+            elif key == "t":
+                self.settings["large_text"] = not self.settings.get("large_text", False)
+                self._apply_font()
+            elif key == "k":
+                self.mode = "bind"
+                self._bind_text()
+                return
+            elif key == "r":
+                from lantern.keys import DEFAULT_KEYS
+
+                self.settings["keys"] = dict(DEFAULT_KEYS)
             elif key == "enter":
                 _save_settings(self.settings)
                 self.mode = "pause"
@@ -209,6 +319,10 @@ class Game:
                 return
             _save_settings(self.settings)
             self._settings_text()
+            return
+        if self.mode == "menu" and key == "l":
+            self.mode = "board"
+            self._board_text()
             return
         if key == "enter":
             if self.mode == "menu":
@@ -232,31 +346,145 @@ class Game:
 
     def _settings_text(self) -> None:
         palette = "bật" if self.settings.get("colorblind") else "tắt"
+        motion = "bật" if self.settings.get("reduce_motion") else "tắt"
+        large = "bật" if self.settings.get("large_text") else "tắt"
         self.banner.text = (
             f"Cài đặt\n\nÂm lượng {self.settings['volume']:.1f}   ← →\n"
             f"Độ nhạy chuột {self.settings['sensitivity']:.1f}   ↑ ↓\n"
-            f"Bảng màu dễ phân biệt  {palette}   C\n\nEnter — Quay lại"
+            f"Bảng màu dễ phân biệt  {palette}   C\n"
+            f"Giảm chuyển động  {motion}   G\n"
+            f"Chữ lớn  {large}   T\n"
+            f"Đổi phím   K     Khôi phục mặc định   R\n\nEnter — Quay lại"
         )
+
+    def _bind_text(self) -> None:
+        from lantern.keys import DEFAULT_KEYS, LABELS
+
+        lines = ["Đổi phím — bấm 1 đến 9", ""]
+        for number, action in enumerate(DEFAULT_KEYS, start=1):
+            lines.append(f"{number} {LABELS[action]}: {self.settings['keys'][action]}")
+        lines.append("")
+        lines.append("Esc — Quay lại")
+        self.banner.text = "\n".join(lines)
+
+    def _bind_menu_key(self, key: str) -> None:
+        from lantern.keys import DEFAULT_KEYS
+
+        if key == "escape":
+            self.mode = "settings"
+            self._settings_text()
+            return
+        if key in [str(number) for number in range(1, 10)]:
+            self.bind_action = list(DEFAULT_KEYS)[int(key) - 1]
+            self.banner.text = f"Bấm phím mới cho {self.bind_action}\n\nBackspace — Hủy"
+            self.mode = "bind_wait"
+
+    def _capture_key(self, key: str) -> None:
+        from lantern.keys import assign_key
+
+        if key == "backspace":
+            self.mode = "bind"
+            self._bind_text()
+            return
+        updated, error = assign_key(self.settings["keys"], self.bind_action, key)
+        if error:
+            self.banner.text = f"{error}\n\nBấm phím khác, hoặc Backspace để hủy"
+            return
+        self.settings["keys"] = updated
+        _save_settings(self.settings)
+        self.mode = "bind"
+        self._bind_text()
+
+    def _name_key(self, key: str) -> None:
+        from lantern.leaderboard import add_entry, valid_name
+
+        if key == "escape":
+            self._leave_naming(saved=False)
+            return
+        if key == "backspace":
+            self.name_buffer = self.name_buffer[:-1]
+            self._naming_text()
+            return
+        if key == "enter":
+            if not valid_name(self.name_buffer):
+                self.banner.text = f"Tên chưa hợp lệ\n\n{self.name_buffer}_\n\nCần 3–12 chữ, số hoặc _"
+                return
+            self._save_score(self.name_buffer, add_entry)
+            self._leave_naming(saved=True)
+            return
+        if len(key) == 1:
+            self.name_buffer += key
+            self._naming_text()
+
+    def _save_score(self, name: str, add_entry) -> None:
+        from datetime import datetime
+
+        add_entry(
+            {
+                "name": name,
+                "score": int(sum(self.scores)),
+                "nights_won": len(self.scores),
+                "achieved_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "seed": T.PLAY_SEED + self.night,
+            }
+        )
+
+    def _leave_naming(self, saved: bool) -> None:
+        note = "Đã lưu. " if saved else ""
+        if self.after_name == "dawn":
+            self.mode = "dawn"
+            total = sum(self.scores)
+            self.banner.text = f"{note}Bình Minh\n\nTổng điểm {total}\n\nEnter — Về menu"
+            return
+        self.mode = "result"
+        if self.sim and self.sim.state == "won":
+            self.banner.text = f"{note}Đêm {self.night} sáng\nĐiểm {self.sim.score}\n\nEnter — Đêm sau"
+        else:
+            self.banner.text = f"{note}Đêm {self.night} tắt\n\nEnter — Chơi lại đêm này"
+
+    def _board_text(self) -> None:
+        from lantern.leaderboard import load_entries
+
+        lines = ["Bảng xếp hạng", ""]
+        entries = load_entries()
+        if not entries:
+            lines.append("Chưa có điểm")
+        for index, entry in enumerate(entries, start=1):
+            lines.append(f"{index}. {entry['name']}  {entry['score']}  đêm {entry['nights_won']}")
+        lines.append("")
+        lines.append("Enter — Về menu")
+        self.banner.text = "\n".join(lines)
 
     def _update(self) -> None:
         from ursina import time
 
         if self.bench:
             self._bench_frame()
+        self._decay_flash(time.dt)
         if self.mode != "play" or self.sim is None:
             return
-        from ursina import mouse
+        if self.contract_bench:
+            self._step_live()
+            self._sync(time.time())
+            self._orbit_camera()
+            self._record_bench()
+            return
+        if not self.contract_bench:
+            from ursina import mouse
 
-        if mouse.locked:
-            self.yaw += mouse.velocity[0] * 70 * self.settings["sensitivity"]
+            if mouse.locked:
+                self.yaw += mouse.velocity[0] * 70 * self.settings["sensitivity"]
         self.acc = min(0.25, self.acc + time.dt)
         while self.acc >= DT:
             self._step_live()
             self.acc -= DT
-            if self.sim.state != "playing":
+            if self.sim.state != "playing" and not self.contract_bench:
                 self._finish_night()
                 return
         self._sync(time.time())
+        if self.contract_bench:
+            self._orbit_camera()
+            self._record_bench()
 
     def _bench_frame(self) -> None:
         import time as clock
@@ -275,18 +503,23 @@ class Game:
         from ursina import held_keys
 
         sim = self.sim
+        if self.contract_bench:
+            sim.set_input([0.0, 0.0], 0.0, {"jump": False, "interact": False, "pulse": False, "dash": False, "pause": False})
+            sim.step()
+            return
         grounded = sim.grounded
-        move_x = _axis("d", "right arrow") - _axis("a", "left arrow")
-        move_z = _axis("w", "up arrow") - _axis("s", "down arrow")
-        jump = bool(held_keys["space"])
+        keys = self.settings["keys"]
+        move_x = _axis(keys["right"], "right arrow") - _axis(keys["left"], "left arrow")
+        move_z = _axis(keys["forward"], "up arrow") - _axis(keys["back"], "down arrow")
+        jump = bool(held_keys[keys["jump"]])
         sim.set_input(
             [move_x, move_z],
             self.yaw,
             {
                 "jump": jump,
-                "interact": bool(held_keys["e"]),
-                "pulse": bool(held_keys["f"]),
-                "dash": bool(held_keys["left shift"]),
+                "interact": bool(held_keys[keys["interact"]]),
+                "pulse": bool(held_keys[keys["pulse"]]),
+                "dash": bool(held_keys[keys["dash"]]),
                 "pause": False,
             },
         )
@@ -303,6 +536,9 @@ class Game:
                 self._play("pulse")
             elif name == "player_hit":
                 self._play("hit")
+                if not self.settings.get("reduce_motion"):
+                    self.flash_left = 0.18
+                    self.shake = 0.35
             elif name == "dash":
                 self._play("dash")
             elif name == "shade_spawned":
@@ -319,7 +555,7 @@ class Game:
         if math.hypot(sim.vx, sim.vz) > 0.2:
             self.player.rotation_y = math.degrees(math.atan2(sim.vx, sim.vz))
         self._sync_motes(now)
-        self._sync_shades()
+        self._sync_shades(now)
         self._sync_drifters(now)
         self._sync_charms()
         lit = 0
@@ -368,6 +604,7 @@ class Game:
         dash = "Lướt sẵn" if sim.dash_cd == 0 or sim.charm_left > 0 else f"Lướt {sim.dash_cd / 60:.1f}"
         pulse = "Sáng sẵn" if sim.pulse_cd == 0 else f"Sáng {sim.pulse_cd / 60:.1f}"
         self.cooldowns.text = f"{dash}\n{pulse}"
+        self._captions(now, left)
         self.prompt.text = ""
         self.arrow.text = ""
         nearest = None
@@ -381,11 +618,12 @@ class Game:
             return
         dist, lantern = nearest
         if dist <= T.INTERACT_RADIUS:
+            interact = self.settings["keys"]["interact"].upper()
             if lantern.lit:
-                self.prompt.text = f"E - Cham dau ({lantern.fuel_units / 60:.0f})"
+                self.prompt.text = f"{interact} - Cham dau ({lantern.fuel_units / 60:.0f})"
             else:
                 cost = T.RELIGHT_COST if lantern.ever_lit else T.LANTERN_COST
-                self.prompt.text = f"E - Thap den ({lantern.deposited}/{cost})"
+                self.prompt.text = f"{interact} - Thap den ({lantern.deposited}/{cost})"
             return
         dx = lantern.x - sim.x
         dz = lantern.z - sim.z
@@ -398,13 +636,129 @@ class Game:
             self.arrow.text = ">"
             self.arrow.position = (max(-0.78, min(0.78, math.sin(angle) * 0.9)), max(-0.3, min(0.3, math.cos(angle) * 0.35)))
 
+    def _captions(self, now: float, left: float) -> None:
+        lines = []
+        if self.alert_shade is not None and now < self.alert_until:
+            lines.append("Bóng Mực xuất hiện")
+            self._place_edge(self.alert_shade)
+        else:
+            self.edge_arrow.text = ""
+        if self.sim.wind_enabled and world.gust_phase(self.sim.sim_tick)[0] == "warn":
+            lines.append("Gió sắp thổi")
+        if left <= 10:
+            lines.append("10 giây cuối")
+        if any(lantern.lit and lantern.fuel_units < T.LOW_FUEL_UNITS for lantern in self.sim.lanterns):
+            lines.append("Đèn yếu")
+        self.caption.text = "\n".join(lines)
+
+    def _place_edge(self, shade) -> None:
+        dx = shade.x - self.sim.x
+        dz = shade.z - self.sim.z
+        angle = math.atan2(dx, dz) - math.radians(self.yaw)
+        while angle > math.pi:
+            angle -= math.tau
+        while angle < -math.pi:
+            angle += math.tau
+        self.edge_arrow.text = ">"
+        self.edge_arrow.position = (
+            max(-0.9, min(0.9, math.sin(angle) * 1.05)),
+            max(-0.42, min(0.42, math.cos(angle) * 0.55)),
+        )
+
     def _camera(self) -> None:
         from ursina import Vec3
 
         sim = self.sim
         radians = math.radians(self.yaw)
-        self.camera.position = (sim.x - math.sin(radians) * 9, sim.y + 4.8, sim.z - math.cos(radians) * 9)
+        bob = 0.0
+        shake = 0.0
+        if not self.settings.get("reduce_motion"):
+            if math.hypot(sim.vx, sim.vz) > 0.2:
+                bob = math.sin(time_mod() * 8) * 0.06
+            if self.shake > 0:
+                shake = math.sin(self.shake * 50) * 0.2
+                self.shake = max(0.0, self.shake - 0.05)
+        else:
+            self.shake = 0.0
+        self.camera.position = (sim.x - math.sin(radians) * 9, sim.y + 4.8 + bob + shake, sim.z - math.cos(radians) * 9)
         self.camera.look_at(Vec3(sim.x, sim.y + 1.2, sim.z))
+
+    def _orbit_camera(self) -> None:
+        from ursina import Vec3
+        import time as clock
+
+        elapsed = 0.0 if self.bench_first is None else clock.perf_counter() - self.bench_first
+        theta = (elapsed / 15.0) * math.tau
+        self.camera.position = (30.0 * math.cos(theta), 15.0, 30.0 * math.sin(theta))
+        self.camera.look_at(Vec3(0, 0, 0))
+
+    def _record_bench(self) -> None:
+        import time as clock
+
+        from lantern.bench import sample_memory
+
+        now = clock.perf_counter()
+        if self.bench_first is None:
+            self.bench_first = now
+            return
+        elapsed = now - self.bench_first
+        if not self.bench_shot and elapsed >= 0.5:
+            self._save_shot()
+            self.bench_shot = True
+        if elapsed < 3.0:
+            return
+        duration = float(self.contract["duration"])
+        if elapsed >= 3.0 + duration:
+            self._write_bench(self.bench_samples)
+            from ursina import application
+
+            application.quit()
+            return
+        from ursina import time
+
+        self.bench_samples.append(time.dt * 1000.0)
+        self.bench_peak = sample_memory(self.bench_peak)
+
+    def _write_bench(self, samples: list[float]) -> None:
+        from lantern.bench import write_report
+
+        if not samples:
+            return
+        try:
+            write_report(
+                self.contract["out"],
+                samples,
+                (self.bench_first - self.contract["started_at"]) * 1000.0,
+                self.bench_peak,
+                self.contract,
+            )
+            print(f"wrote {self.contract['out']} frames {len(samples)}", flush=True)
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+
+    def _save_shot(self) -> None:
+        try:
+            from panda3d.core import Filename
+            from ursina import application
+
+            folder = Path("images")
+            folder.mkdir(exist_ok=True)
+            application.base.win.saveScreenshot(Filename.fromOsSpecific(str((folder / "night1.png").resolve())))
+        except Exception:
+            return
+
+    def _decay_flash(self, dt: float) -> None:
+        if self.settings.get("reduce_motion"):
+            self.flash_left = 0.0
+            self.shake = 0.0
+        if self.flash_left > 0:
+            self.flash_left = max(0.0, self.flash_left - dt)
+            alpha = int(140 * (self.flash_left / 0.18))
+            self.flash.color = self._hx("#FF5A5F", alpha)
+        else:
+            self.flash.color = self._hx("#FF5A5F", 0)
 
     def _build_world(self) -> None:
         sea = self._quad(420 if self.night == 1 else 520, self._hx("#12384A"), y=-0.35)
@@ -488,19 +842,37 @@ class Game:
         for mote in self.sim.motes:
             ent = self.mote_ents.get(mote.id)
             if ent is None:
-                ent = self._orb("#FFF6C2", "#FFE58A", 0.18)
+                if self.contract_bench:
+                    ent = self.Entity(model="sphere", scale=0.22, color=self._hx("#FFE58A"))
+                else:
+                    ent = self._orb("#FFF6C2", "#FFE58A", 0.18)
                 self.mote_ents[mote.id] = ent
             ent.position = (mote.x, mote.y + 0.45 + math.sin(now * 3) * 0.08, mote.z)
 
-    def _sync_shades(self) -> None:
+    def _sync_shades(self, now: float = 0.0) -> None:
         alive = {shade.id: shade for shade in self.sim.shades}
+        ids = set(alive)
+        if self.known_shades is None:
+            self.known_shades = set(ids)
+        else:
+            fresh = ids - self.known_shades
+            if fresh:
+                self.alert_shade = alive[sorted(fresh)[0]]
+                self.alert_until = now + 3.0
+            self.known_shades = set(ids)
         for shade_id, ent in list(self.shade_ents.items()):
             if shade_id not in alive:
                 self._drop(ent)
                 del self.shade_ents[shade_id]
         for shade in self.sim.shades:
             ent = self.shade_ents.get(shade.id)
-            if ent is None:
+            if ent is None and self.contract_bench:
+                ent = self.Entity(model="sphere", scale=1.5, color=self._hx(self._shade_tint()))
+                ent.body = ent
+                ent.edge = ent
+                ent.eye = ent
+                self.shade_ents[shade.id] = ent
+            elif ent is None:
                 ent = self.Entity()
                 body = self.Entity(parent=ent, model="sphere", scale=(1.4, 1.5, 1.4), color=self._hx("#120A1A"), shader=self.shader)
                 edge = self.Entity(parent=ent, model="sphere", scale=(1.7, 1.7, 1.7), color=self._hx(self._shade_tint(), 70))
@@ -573,11 +945,16 @@ class Game:
         self.player = None
 
     def _hide_hud(self) -> None:
-        for item in (self.flames, self.clock, self.stats, self.pips, self.cooldowns, self.prompt, self.arrow):
+        for item in (self.flames, self.clock, self.stats, self.pips, self.cooldowns, self.prompt, self.arrow, self.caption, self.edge_arrow):
             item.text = ""
 
     def _show_hud(self) -> None:
-        self.help_text.text = "WASD đi   Space nhảy   Shift lướt   E nạp   F tỏa sáng   Esc dừng"
+        keys = self.settings["keys"]
+        self.help_text.text = (
+            f"{keys['forward']}{keys['left']}{keys['back']}{keys['right']} đi   "
+            f"{keys['jump']} nhảy   {keys['dash']} lướt   {keys['interact']} nạp   "
+            f"{keys['pulse']} sáng   {keys['pause']} dừng"
+        )
 
     def _play(self, name: str) -> None:
         sound = self.sounds.get(name)
@@ -603,6 +980,12 @@ def _hex(color_module, value: str, alpha: int = 255):
     return color_module.rgba32(red, green, blue, alpha)
 
 
+def time_mod() -> float:
+    import time as clock
+
+    return clock.time()
+
+
 def _shader():
     from ursina.shaders import lit_with_shadows_shader
 
@@ -622,20 +1005,29 @@ def _settings_path() -> Path:
 
 
 def _load_settings() -> dict:
-    import json
+    from lantern.keys import clean_keys
 
+    base = {
+        "volume": 0.7,
+        "sensitivity": 1.0,
+        "colorblind": False,
+        "reduce_motion": False,
+        "large_text": False,
+        "keys": clean_keys({}),
+    }
     path = _settings_path()
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            return {
-                "volume": float(data.get("volume", 0.7)),
-                "sensitivity": float(data.get("sensitivity", 1.0)),
-                "colorblind": bool(data.get("colorblind", False)),
-            }
+            base["volume"] = float(data.get("volume", 0.7))
+            base["sensitivity"] = float(data.get("sensitivity", 1.0))
+            base["colorblind"] = bool(data.get("colorblind", False))
+            base["reduce_motion"] = bool(data.get("reduce_motion", False))
+            base["large_text"] = bool(data.get("large_text", False))
+            base["keys"] = clean_keys(data.get("keys"))
         except (OSError, ValueError, TypeError):
             pass
-    return {"volume": 0.7, "sensitivity": 1.0, "colorblind": False}
+    return base
 
 
 def _save_settings(settings: dict) -> None:

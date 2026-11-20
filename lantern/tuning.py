@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-CONTRACT_VERSION = "1.2"
+CONTRACT_VERSION = "1.3"
 TEAM = "2A202603691-LeHoangAnh"
 BUILD_CMD = "python3 -m pip install -r requirements.txt"
 RUN_CMD = "python3 -m lantern play"
 HEADLESS_CMD = "python3 -m lantern headless"
+BENCH_CMD = "python3 -m lantern bench"
+SOAK_CMD = "python3 -m lantern soak"
 
 PLAYER_SPEED = 6.0
 CHARM_SPEED = 7.2
@@ -107,6 +109,8 @@ def contract_dict() -> dict:
         "build_cmd": BUILD_CMD,
         "run_cmd": RUN_CMD,
         "headless_cmd": HEADLESS_CMD,
+        "bench_cmd": BENCH_CMD,
+        "soak_cmd": SOAK_CMD,
         "tuning": {
             "player_speed": PLAYER_SPEED,
             "carry_capacity": CARRY_CAPACITY,

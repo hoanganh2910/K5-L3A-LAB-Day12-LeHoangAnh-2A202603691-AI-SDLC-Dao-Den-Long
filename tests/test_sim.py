@@ -1,4 +1,4 @@
-"""Night rules against Test Contract v1.2, including the Phase 1 behaviors with standard numbers."""
+"""Night rules against Test Contract v1.3, including the Phase 1 behaviors with standard numbers."""
 
 import json
 from pathlib import Path
@@ -42,7 +42,9 @@ def snap(lines, tick):
 def test_contract_file_matches_tuning():
     on_disk = json.loads(Path("game.contract.json").read_text(encoding="utf-8"))
     assert on_disk == contract_dict()
-    assert on_disk["contract_version"] == "1.2"
+    assert on_disk["contract_version"] == "1.3"
+    assert on_disk["bench_cmd"] == "python3 -m lantern bench"
+    assert on_disk["soak_cmd"] == "python3 -m lantern soak"
     tuning = on_disk["tuning"]
     assert tuning["player_speed"] == 6.0
     assert tuning["carry_capacity"] == 10

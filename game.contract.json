@@ -1,9 +1,11 @@
 {
-  "contract_version": "1.2",
+  "contract_version": "1.3",
   "team": "2A202603691-LeHoangAnh",
   "build_cmd": "python3 -m pip install -r requirements.txt",
   "run_cmd": "python3 -m lantern play",
   "headless_cmd": "python3 -m lantern headless",
+  "bench_cmd": "python3 -m lantern bench",
+  "soak_cmd": "python3 -m lantern soak",
   "tuning": {
     "player_speed": 6.0,
     "carry_capacity": 10,
